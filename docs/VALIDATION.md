@@ -21,6 +21,19 @@
 
 ## GitHub Actions
 
+源码提交：`6e8e239de6c45a77bda603f7c706a50e305aab12`。
+
+[实际运行记录 #35686292637](https://github.com/ziwenx1973/GoArena/actions/runs/35686292637)：**success**。以下步骤均已实际通过：
+
+- 依赖下载、gofmt 检查、`go vet ./...`。
+- Ubuntu 上的 `go test -race ./...`。
+- MySQL 8.4 + Redis 7.4 下，`ARENA_INTEGRATION=1 go test -race ./tests -run '^TestIntegration$' -v -count=1`。
+- `go build ./cmd/server`。
+
+真实业务验证包括：HTTP 测试服务器启动、MySQL/Redis 连接、双用户注册登录、bcrypt 哈希检查、JWT/非法 token、两个 WebSocket 连接、取消/重复匹配、FIFO 配对与房间创建、非法/重复出拳、一局平局后两局获胜、双方 game_over、MySQL 战绩保存与双方历史查询、立即再次匹配、断线判负及保存。
+
+该结果是实际网络客户端与真实数据库的集成验证，不是手动浏览器演示，也不是在 Windows 上启动整个容器栈。`cmd/server` 的二进制构建已通过，但本次没有单独在开发机连接依赖启动该二进制。
+
 工作流配置了 Ubuntu、MySQL 8.4、Redis 7.4，以及普通检查和真实端到端测试。运行状态以 [Go CI](https://github.com/ziwenx1973/GoArena/actions/workflows/ci.yml) 中具体提交的结果为准。
 
 真实集成测试由 `ARENA_INTEGRATION=1` 启用，不允许使用假数据库冒充通过。它验证真实 HTTP/JWT/WebSocket、取消与重复匹配、平局与两胜结束、MySQL 保存、战绩查询和断线判负。

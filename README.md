@@ -6,6 +6,8 @@ GoArena 是基于 Go 实现的轻量级实时多人游戏后台 Demo。两名玩
 
 项目面向游戏后台开发学习与个人实习作品展示，重点是完整业务流程、连接生命周期与并发状态管理。它是**单进程服务**：房间保存在内存，Redis 负责在线状态和 FIFO 匹配队列，不支持多实例匹配或重启恢复房间。
 
+已在 [GitHub Actions](https://github.com/ziwenx1973/GoArena/actions/runs/35686292637) 使用真实 MySQL 8.4、Redis 7.4 通过端到端测试，同时通过 Linux race 检查。开发机尚未验证 Docker Compose 启动，详见 [验证记录](docs/VALIDATION.md)。
+
 > 仓库地址使用已经创建的 `ziwenx1973/GoArena`；应用名和 Compose 服务名为 `go-arena`。没有为改名创建另一份仓库。
 
 ## 核心功能
