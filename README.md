@@ -6,9 +6,7 @@ GoArena 是基于 Go 实现的轻量级实时多人游戏后台 Demo。两名玩
 
 项目面向游戏后台开发学习与个人实习作品展示，重点是完整业务流程、连接生命周期与并发状态管理。它是**单进程服务**：房间保存在内存，Redis 负责在线状态和 FIFO 匹配队列，不支持多实例匹配或重启恢复房间。
 
-已在 [GitHub Actions](https://github.com/ziwenx1973/GoArena/actions/runs/35686292637) 使用真实 MySQL 8.4、Redis 7.4 通过端到端测试，同时通过 Linux race 检查。开发机尚未验证 Docker Compose 启动，详见 [验证记录](docs/VALIDATION.md)。
 
-> 仓库地址使用已经创建的 `ziwenx1973/GoArena`；应用名和 Compose 服务名为 `go-arena`。没有为改名创建另一份仓库。
 
 ## 核心功能
 
@@ -56,42 +54,7 @@ flowchart TD
   Room --> Repository
 ```
 
-## 游戏流程
 
-```mermaid
-sequenceDiagram
-  participant A as 玩家 A
-  participant S as GoArena
-  participant B as 玩家 B
-  participant R as Redis
-  participant D as MySQL
-  A->>S: 注册 / 登录
-  S->>D: 保存 bcrypt 哈希 / 查询账号
-  S-->>A: JWT
-  B->>S: 注册 / 登录
-  S-->>B: JWT
-  A->>S: WebSocket + start_match
-  S->>R: 入队 A
-  B->>S: WebSocket + start_match
-  S->>R: 入队 B / 取队首两人
-  S->>S: 创建 Room，启动 goroutine
-  S-->>A: match_success
-  S-->>B: match_success
-  loop 任意玩家获得 2 胜前
-    A->>S: action
-    B->>S: action
-    S->>S: Room 串行判定并更新比分
-    S-->>A: round_result
-    S-->>B: round_result
-  end
-  S->>D: 保存 GameRecord
-  S-->>A: game_over
-  S-->>B: game_over
-  S->>S: 删除 Room，退出 goroutine
-  A->>S: GET /api/records
-  S->>D: 查询最近 20 条
-  S-->>A: 战绩
-```
 
 ## Room 并发模型
 
@@ -150,7 +113,6 @@ GoArena/
 └── README.md
 ```
 
-只使用环境变量配置，没有多余的 `configs/config.yaml`，避免出现两套配置来源。
 
 ## 快速启动
 
@@ -211,8 +173,6 @@ docker compose down # 保留数据库 volume
 ```
 
 不要随意使用 `down -v`，它会删除数据库数据。修改 `.env` 中密码不会自动修改已经初始化过的 MySQL volume 中的账号密码。Compose 内部 Redis 无密码，仅位于内部网络；本地运行可通过 `REDIS_PASSWORD` 连接需要密码的 Redis。
-
-**开发机未安装 Docker，未在开发机执行 Compose 容器启动；不要将配置交付等同于容器部署验证。** 详细验证记录见 [docs/VALIDATION.md](docs/VALIDATION.md)。
 
 ### 配置项
 
