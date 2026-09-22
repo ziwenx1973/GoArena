@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GoArena 实时对战调试台</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#e4eaf5;font:15px/1.6 system-ui,sans-serif}main{max-width:1000px;margin:36px auto;padding:0 20px}h1{margin-bottom:0}h2{font-size:18px}p{color:#aab9d1}section{padding:20px;background:#1b263a;border:1px solid #33435e;border-radius:12px;margin:16px 0}input,button{font:inherit;border:1px solid #53647f;border-radius:6px;padding:9px 13px;margin:4px;background:#142036;color:inherit}button{cursor:pointer;background:#254a73}button:hover{background:#356596}button:disabled{opacity:.4;cursor:default}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:350px;overflow:auto;background:#0d1422;padding:15px;border-radius:6px}#state{color:#7de3c6}label{display:inline-block}.choices button{font-size:20px}small{color:#aab9d1}
+</style></head>
+<body><main>
+<h1>GoArena <small>实时对战调试台</small></h1><p>石头 · 剪刀 · 布 / 先赢两局获胜，平局不计胜场。每回合限时 60 秒。</p>
+<section><h2>01 / 账号</h2><label>用户名 <input id="username" autocomplete="username" placeholder="alice" maxlength="32"></label><label>密码 <input id="password" type="password" autocomplete="current-password" placeholder="至少 6 位"></label><div><button id="register">注册</button><button id="login">登录并保存 JWT</button><button id="profile">个人信息</button><button id="logout">清除登录</button></div><small>JWT 仅保存在当前标签页的 sessionStorage；用两个独立标签页登录不同账号演示。</small><div id="account">未登录</div></section>
+<section><h2>02 / 连接与匹配</h2><button id="connect">连接 WebSocket</button><button id="disconnect" disabled>断开连接</button><button id="start" disabled>开始匹配</button><button id="cancel" disabled>取消匹配</button><button id="ping" disabled>Ping</button><p id="state">尚未连接</p></section>
+<section><h2>03 / 对战</h2><div id="score">等待进入房间</div><div class="choices"><button data-choice="rock" disabled>Rock 石头</button><button data-choice="paper" disabled>Paper 布</button><button data-choice="scissors" disabled>Scissors 剪刀</button></div><pre id="result">回合结果与最终结果会显示在这里。</pre></section>
+<section><h2>04 / 历史战绩</h2><button id="records">查询最近 20 条战绩</button><pre id="history">尚未查询</pre></section>
+<section><h2>实时消息日志</h2><button id="clear">清空日志</button><pre id="log" aria-live="polite"></pre></section>
+</main><script>
+const $=id=>document.getElementById(id);
+let token=sessionStorage.getItem('arena_token')||'',ws=null,room=null,round=1,submitted=false,waiting=false;
+const log=(type,data)=>{const node=$('log');const lines=node.textContent.split('\n').slice(-180);lines.push(`[${new Date().toLocaleTimeString()}] ${type} ${JSON.stringify(data)}`);node.textContent=lines.join('\n');node.scrollTop=node.scrollHeight;};
+function controls(){const connected=ws?.readyState===WebSocket.OPEN;$('connect').disabled=!!ws;$('disconnect').disabled=!ws;$('start').disabled=!connected||!!room||waiting;$('cancel').disabled=!connected||!!room||!waiting;$('ping').disabled=!connected;document.querySelectorAll('[data-choice]').forEach(b=>b.disabled=!connected||!room||submitted);$('login').disabled=!!ws;$('register').disabled=!!ws;$('account').textContent=token?'JWT 已保存（当前标签页）':'未登录';}
+async function api(path,body){const res=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});const data=await res.json();if(!res.ok)throw Error(data.error||`HTTP ${res.status}`);return data;}
+function task(fn){return async()=>{try{await fn();}catch(e){log('error',e.message);$('state').textContent=e.message;}};}
+const credentials=()=>({username:$('username').value,password:$('password').value});
+$('register').onclick=task(async()=>log('register',await api('/api/register',credentials())));
+$('login').onclick=task(async()=>{const data=await api('/api/login',credentials());token=data.token;sessionStorage.setItem('arena_token',token);$('password').value='';log('login','登录成功');controls();});
+$('profile').onclick=task(async()=>{const data=await api('/api/profile');$('account').textContent=`${data.username} / 用户 ${data.id}`;log('profile',data);});
+$('logout').onclick=()=>{ws?.close();token='';sessionStorage.removeItem('arena_token');controls();};
+$('records').onclick=task(async()=>{$('history').textContent=JSON.stringify(await api('/api/records'),null,2);});
+function send(type,data={}){if(ws?.readyState!==WebSocket.OPEN)throw Error('请先连接 WebSocket');ws.send(JSON.stringify({type,data}));log('发送 '+type,data);}
+$('connect').onclick=task(async()=>{if(!token)throw Error('请先登录');if(ws)return;const conn=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws?token=${encodeURIComponent(token)}`);ws=conn;controls();$('state').textContent='连接中';conn.onopen=()=>{$('state').textContent='已连接';controls();};conn.onerror=()=>log('error','WebSocket 连接失败，请检查登录状态与服务端日志');conn.onclose=()=>{if(ws!==conn)return;ws=null;room=null;waiting=false;submitted=false;$('state').textContent='连接已关闭';controls();};conn.onmessage=e=>{const m=JSON.parse(e.data);log(m.type,m.data);switch(m.type){
+case 'match_waiting':waiting=true;$('state').textContent='正在等待另一名玩家';break;
+case 'match_cancelled':waiting=false;$('state').textContent='已取消匹配';break;
+case 'match_success':waiting=false;room=m.data;round=1;submitted=false;$('state').textContent=`房间 ${room.room_id}`;$('score').textContent=`玩家 ${room.player1_id} vs ${room.player2_id} · 0 : 0 · 第 1 回合`;break;
+case 'round_result':round=m.data.round+1;submitted=false;$('result').textContent=JSON.stringify(m.data,null,2);$('score').textContent=`${m.data.player1_score} : ${m.data.player2_score} · 下一回合 ${round}`;break;
+case 'game_over':room=null;waiting=false;submitted=false;$('result').textContent=JSON.stringify(m.data,null,2);$('state').textContent=`游戏结束 / ${m.data.reason} / 战绩${m.data.record_saved?'已保存':'保存失败'}`;break;
+case 'error':$('state').textContent=m.data.message;if(!room)waiting=false;break;
+}controls();};});
+$('disconnect').onclick=()=>ws?.close();$('start').onclick=task(async()=>{send('start_match');waiting=true;controls();});$('cancel').onclick=task(async()=>send('cancel_match'));$('ping').onclick=task(async()=>send('ping'));
+document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=task(async()=>{send('action',{choice:b.dataset.choice,round});submitted=true;controls();}));$('clear').onclick=()=>{$('log').textContent='';};controls();
+</script></body></html>

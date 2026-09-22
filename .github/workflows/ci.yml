@@ -1,0 +1,46 @@
+name: Go CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: go_arena_test
+          MYSQL_ROOT_PASSWORD: ci-only-temporary-password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+      - name: Check formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Integration with real MySQL and Redis
+        env:
+          ARENA_INTEGRATION: "1"
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: "3306"
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ci-only-temporary-password
+          MYSQL_DATABASE: go_arena_test
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+        run: JWT_SECRET="$(openssl rand -hex 32)" go test -race ./tests -run '^TestIntegration$' -v -count=1
+      - run: go build ./cmd/server
